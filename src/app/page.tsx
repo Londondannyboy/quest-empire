@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { ProfileCard } from "@/components/profile";
 import { ConsentCard } from "@/components/consent";
 import { WeatherCard } from "@/components/weather";
+import { ZepGraph, GraphNode, ClusterType } from "@/components/zep-graph";
 import { AgentState } from "@/lib/types";
 import {
   useCoAgent,
@@ -13,7 +14,7 @@ import {
   useRenderToolCall,
 } from "@copilotkit/react-core";
 import { CopilotKitCSSProperties, CopilotSidebar } from "@copilotkit/react-ui";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 
 // Lazy load VoiceOrb to avoid SSR issues with Hume
 const VoiceOrb = dynamic(
@@ -25,6 +26,51 @@ const VoiceOrb = dynamic(
     ),
   }
 );
+
+// Convert agent state to graph nodes
+function stateToGraphNodes(state: AgentState | null): GraphNode[] {
+  if (!state?.profile) return [];
+
+  const nodes: GraphNode[] = [];
+  const profile = state.profile;
+
+  // Identity cluster
+  if (profile.name) {
+    nodes.push({ id: "name", label: profile.name, cluster: "identity", validated: true });
+  }
+  if (profile.role) {
+    nodes.push({ id: "role", label: profile.role, cluster: "identity", validated: true });
+  }
+  if (profile.company) {
+    nodes.push({ id: "company", label: profile.company, cluster: "identity", validated: true });
+  }
+
+  // Current state cluster
+  if (profile.location) {
+    nodes.push({ id: "location", label: profile.location, cluster: "current", validated: true });
+  }
+  if (profile.day_rate) {
+    nodes.push({ id: "day_rate", label: profile.day_rate, cluster: "current", validated: true });
+  }
+  if (profile.work_style) {
+    nodes.push({ id: "work_style", label: profile.work_style, cluster: "current", validated: true });
+  }
+  if (profile.availability) {
+    nodes.push({ id: "availability", label: profile.availability, cluster: "current", validated: true });
+  }
+
+  // Skills as identity nodes
+  profile.skills.forEach((skill, i) => {
+    nodes.push({ id: `skill_${i}`, label: skill, cluster: "identity", validated: true });
+  });
+
+  // Jobs shown indicator
+  if (state.jobs_shown > 0) {
+    nodes.push({ id: "jobs", label: `${state.jobs_shown} Jobs`, cluster: "needs", validated: true });
+  }
+
+  return nodes;
+}
 
 export default function QuestPage() {
   const [themeColor, setThemeColor] = useState("#6366f1");
@@ -119,6 +165,9 @@ function QuestContent({ themeColor }: { themeColor: string }) {
     [appendMessage]
   );
 
+  // Convert state to graph nodes
+  const graphNodes = useMemo(() => stateToGraphNodes(state), [state]);
+
   // Generative UI for weather (demo)
   useRenderToolCall(
     {
@@ -175,16 +224,25 @@ function QuestContent({ themeColor }: { themeColor: string }) {
   return (
     <div
       style={{ backgroundColor: themeColor }}
-      className="h-screen flex justify-center items-center flex-col gap-8 transition-colors duration-300"
+      className="h-screen flex justify-center items-center transition-colors duration-300 relative overflow-hidden"
     >
-      {/* Voice Orb - Central interaction point */}
-      <VoiceOrb
-        userId={state?.user_id}
-        onTranscript={handleVoiceTranscript}
-      />
+      {/* Zep Graph - Full screen background */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <ZepGraph nodes={graphNodes} className="w-full h-full max-w-4xl" />
+      </div>
 
-      {/* Profile Card */}
-      <ProfileCard state={state} setState={setState} />
+      {/* Voice Orb - Positioned at center, overlapping the graph "YOU" node */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
+        <VoiceOrb
+          userId={state?.user_id}
+          onTranscript={handleVoiceTranscript}
+        />
+      </div>
+
+      {/* Profile Card - Bottom overlay */}
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 w-full max-w-xl px-4">
+        <ProfileCard state={state} setState={setState} />
+      </div>
     </div>
   );
 }
