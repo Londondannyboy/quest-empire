@@ -1,17 +1,30 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { ProfileCard } from "@/components/profile";
 import { ConsentCard } from "@/components/consent";
 import { WeatherCard } from "@/components/weather";
 import { AgentState } from "@/lib/types";
 import {
   useCoAgent,
+  useCopilotChat,
   useFrontendTool,
   useHumanInTheLoop,
   useRenderToolCall,
 } from "@copilotkit/react-core";
 import { CopilotKitCSSProperties, CopilotSidebar } from "@copilotkit/react-ui";
-import { useState } from "react";
+import { useState, useCallback } from "react";
+
+// Lazy load VoiceOrb to avoid SSR issues with Hume
+const VoiceOrb = dynamic(
+  () => import("@/components/voice-orb").then((mod) => mod.VoiceOrb),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-32 h-32 rounded-full bg-gray-700 animate-pulse" />
+    ),
+  }
+);
 
 export default function QuestPage() {
   const [themeColor, setThemeColor] = useState("#6366f1");
@@ -92,6 +105,20 @@ function QuestContent({ themeColor }: { themeColor: string }) {
     },
   });
 
+  // Get chat functions to send voice transcripts to agent
+  const { appendMessage } = useCopilotChat();
+
+  // Handle voice transcripts - send user speech to CopilotKit
+  const handleVoiceTranscript = useCallback(
+    (text: string, role: "user" | "assistant") => {
+      if (role === "user" && text.trim()) {
+        // Send user's speech to the CopilotKit agent
+        appendMessage({ content: text, role: "user" });
+      }
+    },
+    [appendMessage]
+  );
+
   // Generative UI for weather (demo)
   useRenderToolCall(
     {
@@ -148,8 +175,15 @@ function QuestContent({ themeColor }: { themeColor: string }) {
   return (
     <div
       style={{ backgroundColor: themeColor }}
-      className="h-screen flex justify-center items-center flex-col transition-colors duration-300"
+      className="h-screen flex justify-center items-center flex-col gap-8 transition-colors duration-300"
     >
+      {/* Voice Orb - Central interaction point */}
+      <VoiceOrb
+        userId={state?.user_id}
+        onTranscript={handleVoiceTranscript}
+      />
+
+      {/* Profile Card */}
       <ProfileCard state={state} setState={setState} />
     </div>
   );

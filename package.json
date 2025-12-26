@@ -18,6 +18,7 @@
     "@copilotkit/react-core": "1.50.0",
     "@copilotkit/react-ui": "1.50.0",
     "@copilotkit/runtime": "1.50.0",
+    "@humeai/voice-react": "^0.2.11",
     "@neondatabase/serverless": "^1.0.2",
     "next": "16.0.7",
     "react": "^19.2.1",
