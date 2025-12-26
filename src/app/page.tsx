@@ -14,6 +14,7 @@ import {
   useRenderToolCall,
 } from "@copilotkit/react-core";
 import { CopilotKitCSSProperties, CopilotSidebar } from "@copilotkit/react-ui";
+import { TextMessage, Role } from "@copilotkit/runtime-client-gql";
 import { useState, useCallback, useMemo } from "react";
 
 // Lazy load VoiceOrb to avoid SSR issues with Hume
@@ -158,8 +159,8 @@ function QuestContent({ themeColor }: { themeColor: string }) {
   const handleVoiceTranscript = useCallback(
     (text: string, role: "user" | "assistant") => {
       if (role === "user" && text.trim()) {
-        // Send user's speech to the CopilotKit agent
-        appendMessage({ content: text, role: "user" });
+        // Send user's speech to the CopilotKit agent using TextMessage
+        appendMessage(new TextMessage({ content: text, role: Role.User }));
       }
     },
     [appendMessage]

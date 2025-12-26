@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { VoiceProvider, useVoice } from "@humeai/voice-react";
 
 interface VoiceOrbProps {
@@ -19,14 +19,19 @@ function VoiceControls({
 }) {
   const { status, connect, disconnect, isMuted, mute, unmute, messages } =
     useVoice();
+  const processedCountRef = useRef(0);
 
   const isConnected = status.value === "connected";
   const isConnecting = status.value === "connecting";
 
-  // Forward transcripts to parent
+  // Forward ONLY NEW transcripts to parent (avoid duplicates)
   useEffect(() => {
     if (!onTranscript) return;
-    for (const msg of messages) {
+
+    // Only process messages we haven't seen yet
+    const newMessages = messages.slice(processedCountRef.current);
+
+    for (const msg of newMessages) {
       if (msg.type === "user_message" || msg.type === "assistant_message") {
         const content = (msg as { message?: { content?: string } }).message
           ?.content;
@@ -38,6 +43,9 @@ function VoiceControls({
         }
       }
     }
+
+    // Update the count of processed messages
+    processedCountRef.current = messages.length;
   }, [messages, onTranscript]);
 
   const handleConnect = useCallback(async () => {
