@@ -31,16 +31,10 @@ async function generateHumeToken(user_id?: string) {
 
   const data = await response.json()
 
-  // Variables to pass to Hume EVI
-  const variables: Record<string, string> = {
-    user_id: user_id || 'anonymous',
-  }
-
   return {
     accessToken: data.access_token,
     configId: process.env.NEXT_PUBLIC_HUME_CONFIG_ID,
     userId: user_id,
-    variables,
   }
 }
 

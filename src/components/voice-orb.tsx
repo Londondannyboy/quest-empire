@@ -3,18 +3,31 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { VoiceProvider, useVoice } from "@humeai/voice-react";
 
+// Profile context to sync with Hume EVI
+interface ProfileContext {
+  role?: string | null;
+  location?: string | null;
+  name?: string | null;
+  skills?: string[];
+}
+
 interface VoiceOrbProps {
   userId?: string;
+  profile?: ProfileContext;
   onTranscript?: (text: string, role: "user" | "assistant") => void;
 }
 
 function VoiceControls({
   accessToken,
   configId,
+  userId,
+  profile,
   onTranscript,
 }: {
   accessToken: string;
   configId: string;
+  userId?: string;
+  profile?: ProfileContext;
   onTranscript?: (text: string, role: "user" | "assistant") => void;
 }) {
   const { status, connect, disconnect, isMuted, mute, unmute, messages } =
@@ -23,6 +36,68 @@ function VoiceControls({
 
   const isConnected = status.value === "connected";
   const isConnecting = status.value === "connecting";
+  const prevProfileRef = useRef<ProfileContext | undefined>(undefined);
+  const needsReconnectRef = useRef(false);
+
+  // Build context string from profile for Hume EVI
+  const buildContextPrompt = useCallback(() => {
+    const parts: string[] = [];
+    if (profile?.name) parts.push(`User's name is ${profile.name}.`);
+    if (profile?.role) parts.push(`They are looking for ${profile.role} roles.`);
+    if (profile?.location) parts.push(`They prefer working in ${profile.location}.`);
+    if (profile?.skills?.length) parts.push(`Their skills include: ${profile.skills.join(", ")}.`);
+    return parts.length > 0 ? parts.join(" ") : "New user, no profile yet.";
+  }, [profile]);
+
+  const handleConnect = useCallback(async () => {
+    try {
+      const contextPrompt = buildContextPrompt();
+      console.log("🎤 Connecting to Hume with context:", contextPrompt);
+
+      await connect({
+        auth: { type: "accessToken", value: accessToken },
+        configId,
+        // Pass user_id as custom_session_id for CLM endpoint
+        sessionSettings: {
+          type: "session_settings",
+          customSessionId: userId || "anonymous",
+          variables: {
+            user_context: contextPrompt,
+            user_role: profile?.role || "not specified",
+            user_location: profile?.location || "not specified",
+          },
+        },
+      });
+    } catch (e) {
+      console.error("Voice connect error:", e);
+    }
+  }, [connect, accessToken, configId, userId, profile, buildContextPrompt]);
+
+  // Auto-reconnect when profile changes significantly (role or location)
+  useEffect(() => {
+    const prevProfile = prevProfileRef.current;
+    const roleChanged = prevProfile?.role !== profile?.role && profile?.role;
+    const locationChanged = prevProfile?.location !== profile?.location && profile?.location;
+
+    if (isConnected && (roleChanged || locationChanged)) {
+      console.log("🔄 Profile changed, will reconnect Hume with new context...");
+      needsReconnectRef.current = true;
+      disconnect();
+    }
+
+    prevProfileRef.current = profile;
+  }, [profile?.role, profile?.location, isConnected, disconnect]);
+
+  // Handle reconnection after disconnect
+  useEffect(() => {
+    if (status.value === "disconnected" && needsReconnectRef.current) {
+      needsReconnectRef.current = false;
+      const timer = setTimeout(() => {
+        handleConnect();
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [status.value, handleConnect]);
 
   // Forward ONLY NEW transcripts to parent (avoid duplicates)
   useEffect(() => {
@@ -47,17 +122,6 @@ function VoiceControls({
     // Update the count of processed messages
     processedCountRef.current = messages.length;
   }, [messages, onTranscript]);
-
-  const handleConnect = useCallback(async () => {
-    try {
-      await connect({
-        auth: { type: "accessToken", value: accessToken },
-        configId,
-      });
-    } catch (e) {
-      console.error("Voice connect error:", e);
-    }
-  }, [connect, accessToken, configId]);
 
   return (
     <div className="flex flex-col items-center gap-4">
@@ -104,7 +168,7 @@ function VoiceControls({
   );
 }
 
-export function VoiceOrb({ userId, onTranscript }: VoiceOrbProps) {
+export function VoiceOrb({ userId, profile, onTranscript }: VoiceOrbProps) {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [configId, setConfigId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -178,6 +242,8 @@ export function VoiceOrb({ userId, onTranscript }: VoiceOrbProps) {
       <VoiceControls
         accessToken={accessToken}
         configId={configId}
+        userId={userId}
+        profile={profile}
         onTranscript={onTranscript}
       />
     </VoiceProvider>

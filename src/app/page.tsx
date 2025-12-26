@@ -5,6 +5,7 @@ import { ProfileCard } from "@/components/profile";
 import { ConsentCard } from "@/components/consent";
 import { WeatherCard } from "@/components/weather";
 import { ZepGraph, GraphNode, ClusterType } from "@/components/zep-graph";
+import { AuthModal } from "@/components/auth-modal";
 import { AgentState } from "@/lib/types";
 import {
   useCoAgent,
@@ -15,7 +16,7 @@ import {
 } from "@copilotkit/react-core";
 import { CopilotKitCSSProperties, CopilotSidebar } from "@copilotkit/react-ui";
 import { TextMessage, Role } from "@copilotkit/runtime-client-gql";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 
 // Lazy load VoiceOrb to avoid SSR issues with Hume
 const VoiceOrb = dynamic(
@@ -155,6 +156,30 @@ function QuestContent({ themeColor }: { themeColor: string }) {
   // Get chat functions to send voice transcripts to agent
   const { appendMessage } = useCopilotChat();
 
+  // Handle auth state changes - update agent's user_id
+  const handleAuthChange = useCallback(
+    (user: { id: string; email: string; name: string | null } | null) => {
+      if (user) {
+        setState({
+          ...state,
+          user_id: user.id,
+          profile: {
+            ...state.profile,
+            name: user.name || state.profile.name,
+          },
+        });
+        console.log("🔐 User logged in:", user.id);
+      } else {
+        setState({
+          ...state,
+          user_id: "anonymous",
+        });
+        console.log("🔓 User logged out");
+      }
+    },
+    [setState, state]
+  );
+
   // Handle voice transcripts - send user speech to CopilotKit
   const handleVoiceTranscript = useCallback(
     (text: string, role: "user" | "assistant") => {
@@ -166,8 +191,17 @@ function QuestContent({ themeColor }: { themeColor: string }) {
     [appendMessage]
   );
 
+  // Debug: log state changes
+  useEffect(() => {
+    console.log("🔄 Agent state updated:", JSON.stringify(state, null, 2));
+  }, [state]);
+
   // Convert state to graph nodes
-  const graphNodes = useMemo(() => stateToGraphNodes(state), [state]);
+  const graphNodes = useMemo(() => {
+    const nodes = stateToGraphNodes(state);
+    console.log("📊 Graph nodes:", nodes.length, nodes);
+    return nodes;
+  }, [state]);
 
   // Generative UI for weather (demo)
   useRenderToolCall(
@@ -227,6 +261,9 @@ function QuestContent({ themeColor }: { themeColor: string }) {
       style={{ backgroundColor: themeColor }}
       className="h-screen flex justify-center items-center transition-colors duration-300 relative overflow-hidden"
     >
+      {/* Auth Modal - Top right */}
+      <AuthModal onAuthChange={handleAuthChange} />
+
       {/* Zep Graph - Full screen background */}
       <div className="absolute inset-0 flex items-center justify-center">
         <ZepGraph nodes={graphNodes} className="w-full h-full max-w-4xl" />
@@ -236,6 +273,7 @@ function QuestContent({ themeColor }: { themeColor: string }) {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
         <VoiceOrb
           userId={state?.user_id}
+          profile={state?.profile}
           onTranscript={handleVoiceTranscript}
         />
       </div>

@@ -106,9 +106,10 @@ async def update_profile(ctx: RunContext[StateDeps[QuestState]],
   if work_style: profile.work_style = work_style
 
   print(f"✅ Updated profile: {profile}")
+  # Use model_dump() to include null fields - prevents partial state overwrites in frontend
   return StateSnapshotEvent(
     type=EventType.STATE_SNAPSHOT,
-    snapshot=ctx.deps.state,
+    snapshot=ctx.deps.state.model_dump(),
   )
 
 # =====
@@ -178,7 +179,7 @@ async def set_consent(ctx: RunContext[StateDeps[QuestState]],
   print(f"📝 Consent for {consent_type}: {granted}")
   return StateSnapshotEvent(
     type=EventType.STATE_SNAPSHOT,
-    snapshot=ctx.deps.state,
+    snapshot=ctx.deps.state.model_dump(),
   )
 
 @agent.tool
@@ -222,7 +223,7 @@ async def set_stage(ctx: RunContext[StateDeps[QuestState]], stage: str) -> State
   print(f"📍 Stage updated to: {stage}")
   return StateSnapshotEvent(
     type=EventType.STATE_SNAPSHOT,
-    snapshot=ctx.deps.state,
+    snapshot=ctx.deps.state.model_dump(),
   )
 
 # Keep the weather tool for demo purposes
