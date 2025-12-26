@@ -11,4 +11,5 @@ dependencies = [
     "python-dotenv",
     "logfire>=4.10.0",
     "zep-cloud",
+    "psycopg[binary]",
 ]

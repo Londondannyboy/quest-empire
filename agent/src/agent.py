@@ -1,6 +1,7 @@
 from textwrap import dedent
 import os
 import json
+import psycopg
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.ag_ui import StateDeps
@@ -12,6 +13,15 @@ from zep_cloud.types import Message
 # load environment variables
 from dotenv import load_dotenv
 load_dotenv()
+
+# =====
+# Database Connection
+# =====
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+def get_db():
+  """Get a database connection."""
+  return psycopg.connect(DATABASE_URL)
 
 # =====
 # Zep Graph Client (fractional-jobs)
@@ -220,3 +230,136 @@ async def set_stage(ctx: RunContext[StateDeps[QuestState]], stage: str) -> State
 def get_weather(_: RunContext[StateDeps[QuestState]], location: str) -> str:
   """Get the weather for a given location. Ensure location is fully spelled out."""
   return f"The weather in {location} is sunny."
+
+# =====
+# Database Persistence Tools
+# =====
+@agent.tool
+def save_profile_to_db(ctx: RunContext[StateDeps[QuestState]]) -> str:
+  """Save the current profile to the Neon database. Use after updating profile."""
+  user_id = ctx.deps.state.user_id
+  profile = ctx.deps.state.profile
+
+  if user_id == "anonymous":
+    return "User not logged in - profile saved to session only."
+
+  try:
+    with get_db() as conn:
+      with conn.cursor() as cur:
+        # Upsert profile
+        cur.execute("""
+          INSERT INTO profiles (id, name, headline)
+          VALUES (%s, %s, %s)
+          ON CONFLICT (id) DO UPDATE SET
+            name = COALESCE(EXCLUDED.name, profiles.name),
+            headline = COALESCE(EXCLUDED.headline, profiles.headline),
+            updated_at = NOW()
+        """, (user_id, profile.name, profile.role))
+
+        # Upsert current state
+        cur.execute("""
+          INSERT INTO current_state (user_id, role_title, location, day_rate, availability, work_style)
+          VALUES (%s, %s, %s, %s, %s, %s)
+          ON CONFLICT (user_id) DO UPDATE SET
+            role_title = COALESCE(EXCLUDED.role_title, current_state.role_title),
+            location = COALESCE(EXCLUDED.location, current_state.location),
+            day_rate = COALESCE(EXCLUDED.day_rate, current_state.day_rate),
+            availability = COALESCE(EXCLUDED.availability, current_state.availability),
+            work_style = COALESCE(EXCLUDED.work_style, current_state.work_style),
+            updated_at = NOW()
+        """, (user_id, profile.role, profile.location, profile.day_rate, profile.availability, profile.work_style))
+
+        conn.commit()
+
+    print(f"💾 Saved profile to database for user {user_id}")
+    return f"Profile saved to database for user {user_id}"
+  except Exception as e:
+    print(f"❌ Database error: {e}")
+    return f"Failed to save to database: {str(e)}"
+
+@agent.tool
+def add_skill_to_db(ctx: RunContext[StateDeps[QuestState]], skill_name: str, proficiency: str = "intermediate") -> str:
+  """Add a skill to the user's database record."""
+  user_id = ctx.deps.state.user_id
+
+  if user_id == "anonymous":
+    return "User not logged in - skill added to session only."
+
+  try:
+    with get_db() as conn:
+      with conn.cursor() as cur:
+        cur.execute("""
+          INSERT INTO skills (user_id, name, proficiency)
+          VALUES (%s, %s, %s)
+        """, (user_id, skill_name, proficiency))
+        conn.commit()
+
+    print(f"💾 Added skill {skill_name} for user {user_id}")
+    return f"Skill '{skill_name}' saved to database"
+  except Exception as e:
+    print(f"❌ Database error: {e}")
+    return f"Failed to save skill: {str(e)}"
+
+@agent.tool
+def add_need_to_db(ctx: RunContext[StateDeps[QuestState]], category: str, need: str) -> str:
+  """Add a need to the user's database record. Categories: career, knowledge, business, support."""
+  user_id = ctx.deps.state.user_id
+
+  if user_id == "anonymous":
+    return "User not logged in - need added to session only."
+
+  try:
+    with get_db() as conn:
+      with conn.cursor() as cur:
+        cur.execute("""
+          INSERT INTO needs (user_id, category, need)
+          VALUES (%s, %s, %s)
+        """, (user_id, category, need))
+        conn.commit()
+
+    print(f"💾 Added need '{need}' ({category}) for user {user_id}")
+    return f"Need '{need}' saved to database"
+  except Exception as e:
+    print(f"❌ Database error: {e}")
+    return f"Failed to save need: {str(e)}"
+
+@agent.tool
+def load_profile_from_db(ctx: RunContext[StateDeps[QuestState]]) -> str:
+  """Load the user's profile from the database into the current session."""
+  user_id = ctx.deps.state.user_id
+
+  if user_id == "anonymous":
+    return "User not logged in - no database profile to load."
+
+  try:
+    with get_db() as conn:
+      with conn.cursor() as cur:
+        # Load profile
+        cur.execute("SELECT name, headline FROM profiles WHERE id = %s", (user_id,))
+        profile_row = cur.fetchone()
+
+        # Load current state
+        cur.execute("SELECT role_title, location, day_rate, availability, work_style FROM current_state WHERE user_id = %s", (user_id,))
+        state_row = cur.fetchone()
+
+        # Load skills
+        cur.execute("SELECT name FROM skills WHERE user_id = %s", (user_id,))
+        skills_rows = cur.fetchall()
+
+        # Update session state
+        if profile_row:
+          ctx.deps.state.profile.name = profile_row[0]
+        if state_row:
+          ctx.deps.state.profile.role = state_row[0]
+          ctx.deps.state.profile.location = state_row[1]
+          ctx.deps.state.profile.day_rate = str(state_row[2]) if state_row[2] else None
+          ctx.deps.state.profile.availability = state_row[3]
+          ctx.deps.state.profile.work_style = state_row[4]
+        if skills_rows:
+          ctx.deps.state.profile.skills = [row[0] for row in skills_rows]
+
+    print(f"📂 Loaded profile from database for user {user_id}")
+    return f"Profile loaded from database. Name: {ctx.deps.state.profile.name}, Role: {ctx.deps.state.profile.role}"
+  except Exception as e:
+    print(f"❌ Database error: {e}")
+    return f"Failed to load profile: {str(e)}"
