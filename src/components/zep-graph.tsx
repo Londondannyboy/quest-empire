@@ -9,6 +9,7 @@ import {
   forceCollide,
   SimulationNodeDatum,
   SimulationLinkDatum,
+  Simulation,
 } from "d3-force";
 
 // Graph node types matching the 4-layer user repo
@@ -64,7 +65,8 @@ interface ZepGraphProps {
 
 export function ZepGraph({ nodes, className = "", onNodeClick }: ZepGraphProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const simulationRef = useRef<ReturnType<typeof forceSimulation> | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const simulationRef = useRef<Simulation<any, any> | null>(null);
   const nodesRef = useRef<GraphNode[]>([]);
   const linksRef = useRef<GraphLink[]>([]);
 
