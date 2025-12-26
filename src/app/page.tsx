@@ -1,12 +1,11 @@
 "use client";
 
-import { ProverbsCard } from "@/components/proverbs";
+import { ProfileCard } from "@/components/profile";
+import { ConsentCard } from "@/components/consent";
 import { WeatherCard } from "@/components/weather";
-import { MoonCard } from "@/components/moon";
 import { AgentState } from "@/lib/types";
 import {
   useCoAgent,
-  useDefaultTool,
   useFrontendTool,
   useHumanInTheLoop,
   useRenderToolCall,
@@ -14,10 +13,10 @@ import {
 import { CopilotKitCSSProperties, CopilotSidebar } from "@copilotkit/react-ui";
 import { useState } from "react";
 
-export default function CopilotKitPage() {
+export default function QuestPage() {
   const [themeColor, setThemeColor] = useState("#6366f1");
 
-  // 🪁 Frontend Actions: https://docs.copilotkit.ai/pydantic-ai/frontend-actions
+  // Frontend tool to change theme
   useFrontendTool({
     name: "setThemeColor",
     parameters: [
@@ -42,79 +41,108 @@ export default function CopilotKitPage() {
         disableSystemMessage={true}
         clickOutsideToClose={false}
         labels={{
-          title: "Popup Assistant",
-          initial: "👋 Hi, there! You're chatting with an agent.",
+          title: "Quest Career Assistant",
+          initial:
+            "👋 Hi! I'm Quest, your career assistant. What role are you looking for?",
         }}
         suggestions={[
           {
-            title: "Generative UI",
-            message: "Get the weather in San Francisco.",
+            title: "Find Jobs",
+            message: "I'm looking for Fractional CMO roles in London.",
           },
           {
-            title: "Frontend Tools",
-            message: "Set the theme to green.",
+            title: "Update Profile",
+            message: "My name is John and I have 10 years experience in marketing.",
           },
           {
-            title: "Human In the Loop",
-            message: "Please go to the moon.",
+            title: "Check Profile",
+            message: "What do you know about me so far?",
           },
           {
-            title: "Write Agent State",
-            message: "Add a proverb about AI.",
-          },
-          {
-            title: "Update Agent State",
-            message:
-              "Please remove 1 random proverb from the list if there are any.",
-          },
-          {
-            title: "Read Agent State",
-            message: "What are the proverbs?",
+            title: "Search Jobs",
+            message: "Search for interim CTO positions in remote.",
           },
         ]}
       >
-        <YourMainContent themeColor={themeColor} />
+        <QuestContent themeColor={themeColor} />
       </CopilotSidebar>
     </main>
   );
 }
 
-function YourMainContent({ themeColor }: { themeColor: string }) {
-  // 🪁 Shared State: https://docs.copilotkit.ai/pydantic-ai/shared-state
+function QuestContent({ themeColor }: { themeColor: string }) {
+  // Shared state with the Quest agent
   const { state, setState } = useCoAgent<AgentState>({
     name: "my_agent",
     initialState: {
-      proverbs: [
-        "CopilotKit may be new, but its the best thing since sliced bread.",
-      ],
+      user_id: "anonymous",
+      profile: {
+        name: null,
+        role: null,
+        company: null,
+        location: null,
+        skills: [],
+        day_rate: null,
+        availability: null,
+        work_style: null,
+      },
+      jobs_shown: 0,
+      consents: {},
+      stage: "onboarding",
     },
   });
 
-  //🪁 Generative UI: https://docs.copilotkit.ai/pydantic-ai/generative-ui
+  // Generative UI for weather (demo)
   useRenderToolCall(
     {
       name: "get_weather",
       description: "Get the weather for a given location.",
       parameters: [{ name: "location", type: "string", required: true }],
-      render: ({ args, result }) => {
+      render: ({ args }) => {
         return <WeatherCard location={args.location} themeColor={themeColor} />;
       },
     },
-    [themeColor],
+    [themeColor]
   );
 
-  // 🪁 Human In the Loop: https://docs.copilotkit.ai/pydantic-ai/human-in-the-loop
+  // HITL for LinkedIn consent
   useHumanInTheLoop(
     {
-      name: "go_to_moon",
-      description: "Go to the moon on request.",
+      name: "request_linkedin_consent",
+      description: "Request consent to enrich profile from LinkedIn.",
       render: ({ respond, status }) => {
         return (
-          <MoonCard themeColor={themeColor} status={status} respond={respond} />
+          <ConsentCard
+            themeColor={themeColor}
+            consentType="linkedin_scrape"
+            description="May I look up your LinkedIn profile to enrich your career data?"
+            status={status}
+            respond={respond}
+          />
         );
       },
     },
-    [themeColor],
+    [themeColor]
+  );
+
+  // HITL for Human Review consent
+  useHumanInTheLoop(
+    {
+      name: "request_human_review",
+      description: "Request consent for human review of profile.",
+      render: ({ respond, status }) => {
+        return (
+          <ConsentCard
+            themeColor={themeColor}
+            consentType="human_review"
+            description="Would you like a Quest career expert to review your profile and help find opportunities?"
+            status={status}
+            respond={respond}
+          />
+        );
+      },
+    },
+    [themeColor]
   );
 
   return (
@@ -122,7 +150,7 @@ function YourMainContent({ themeColor }: { themeColor: string }) {
       style={{ backgroundColor: themeColor }}
       className="h-screen flex justify-center items-center flex-col transition-colors duration-300"
     >
-      <ProverbsCard state={state} setState={setState} />
+      <ProfileCard state={state} setState={setState} />
     </div>
   );
 }

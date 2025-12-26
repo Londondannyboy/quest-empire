@@ -1,6 +1,6 @@
-from agent import ProverbsState, StateDeps, agent
+from agent import QuestState, StateDeps, agent
 
-app = agent.to_ag_ui(deps=StateDeps(ProverbsState()))
+app = agent.to_ag_ui(deps=StateDeps(QuestState()))
 
 if __name__ == "__main__":
     # run the app
